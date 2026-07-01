@@ -8,17 +8,21 @@
  * Modified By: Pedro Farias
  */
 
-import { initPlaywright, closePlaywright, activePage } from './services/playwright.ts';
+import { browserPool, closePlaywright, getDeepSeekHeaders } from './services/playwright.ts';
 
 async function main() {
-  console.log('Opening DeepSeek to allow login...');
-  await initPlaywright(false); // false = not headless
-  if (activePage) {
-    await activePage.goto('https://chat.deepseek.com/', { waitUntil: 'domcontentloaded' });
-  } else {
-    console.error('Failed to get active page');
+  const accountId = process.env.DEEPSEEK_ACCOUNT_ID || 'default';
+  const profilePath = process.env.DEEPSEEK_PROFILE_PATH || '/app/deepseek_profile';
+  
+  console.log(`Initializing browser for account ${accountId}...`);
+  await browserPool.initialize([{ id: accountId, profilePath }]);
+  
+  const page = await browserPool.getPageForAccount(accountId);
+  if (!page) {
+    console.error('Failed to get page for account');
     process.exit(1);
   }
+  
   console.log('Browser opened. Please login to chat.deepseek.com.');
   console.log('Once you are fully logged in and can see the chat interface, close the browser window or press Ctrl+C here.');
   

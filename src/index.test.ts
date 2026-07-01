@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import { app } from './index.ts';
-import { initPlaywright, closePlaywright } from './services/playwright.ts';
+import { browserPool, closePlaywright } from './services/playwright.ts';
 
 test('Health check endpoint returns status ok', async () => {
   const req = new Request('http://localhost/health');
@@ -31,10 +31,8 @@ test('Models endpoint returns deepseek-v4-flash and deepseek-v4-flash-thinking',
 });
 
 test('Chat Completions endpoint with deepseek-v4-flash-thinking (thinking enabled)', async () => {
-  // Initialize playwright for this test
-  // NOTE: Headless mode can sometimes fail Cloudflare checks. We use headless=false for the test
-  // to ensure it matches the logged-in browser state if needed, or you can switch it to true.
-  await initPlaywright(false);
+  // Initialize browser pool for this test with a mock account
+  await browserPool.initialize([{ id: 'test', profilePath: '/tmp/test-profile' }]);
 
   try {
     const payload = {
