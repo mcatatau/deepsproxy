@@ -1,11 +1,1 @@
-node_modules/
-dist/
-deepseek_profile/
-.env
-.env.local
-*.log
-.DS_Store
-coverage/
-.cache/
-.kilo
-start-deepsproxy.sh
+# No changes needed - only README.md was modified, which is a source file that shouldn't be ignored

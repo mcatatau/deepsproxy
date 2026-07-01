@@ -13,8 +13,9 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { chatCompletions } from './routes/chat.ts';
 import * as dotenv from 'dotenv';
-import { initPlaywright } from './services/playwright.ts';
+import { browserPool, closePlaywright } from './services/playwright.ts';
 import { getContextLength } from './services/telemetry.ts';
+import path from 'path';
 
 dotenv.config();
 
@@ -52,8 +53,15 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-// Basic health check
-app.get('/health', (c) => c.json({ status: 'ok' }));
+// Basic health check with account stats
+app.get('/health', (c) => {
+  const stats = browserPool.getAccountStats();
+  return c.json({ 
+    status: 'ok',
+    accounts: stats,
+    timestamp: Date.now()
+  });
+});
 
 // OpenAI compatible routes
 app.post('/v1/chat/completions', chatCompletions);
@@ -70,12 +78,55 @@ app.get('/v1/models', (c) => {
   });
 });
 
-// Initialize playwright when server starts
+// Initialize playwright with multi-account support when server starts
 import { fileURLToPath } from 'url';
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  initPlaywright().then(() => {
-    console.log('Playwright initialized.');
+  // Parse account configurations from environment
+  const parseAccountConfigs = () => {
+    const accountStr = process.env.DEEPSEEK_ACCOUNTS || '';
+    if (!accountStr.trim()) {
+      // Fallback to single default account
+      return [{
+        id: 'default',
+        profilePath: path.resolve('deepseek_profile'),
+        email: undefined
+      }];
+    }
+
+    const configs: Array<{ id: string; profilePath: string; email?: string }> = [];
+    const accounts = accountStr.split(';').filter(s => s.trim());
+    
+    for (const account of accounts) {
+      const parts = account.split(',');
+      const [id, profilePath, email] = parts;
+      
+      if (!id || !profilePath) {
+        console.warn(`[Config] Invalid account format: ${account}. Skipping.`);
+        continue;
+      }
+
+      configs.push({
+        id: id.trim(),
+        profilePath: path.resolve(profilePath.trim()),
+        email: email?.trim()
+      });
+    }
+
+    return configs.length > 0 ? configs : [{
+      id: 'default',
+      profilePath: path.resolve('deepseek_profile'),
+      email: undefined
+    }];
+  };
+
+  const accountConfigs = parseAccountConfigs();
+  console.log(`[Server] Initializing ${accountConfigs.length} DeepSeek account(s)...`);
+
+  browserPool.initialize(accountConfigs).then(() => {
+    const stats = browserPool.getAccountStats();
+    console.log(`[Server] Playwright initialized. Accounts: ${stats.total} total, ${stats.healthy} healthy`);
+    
     const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
     console.log(`Server is running on port ${port}`);
 
@@ -87,4 +138,20 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error('Failed to initialize playwright:', err);
     process.exit(1);
   });
+
+  // Graceful shutdown
+  const gracefulShutdown = async (signal: string) => {
+    console.log(`\n[Server] Received ${signal}. Shutting down gracefully...`);
+    try {
+      await closePlaywright();
+      console.log('[Server] Playwright closed.');
+      process.exit(0);
+    } catch (err) {
+      console.error('[Server] Error during shutdown:', err);
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }

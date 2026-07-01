@@ -6,7 +6,20 @@ services:
       - "3000:3000"
     environment:
       - PORT=3000
-      - API_KEY=sua_api_key_aqui
+      - API_KEY=${API_KEY:-sua_api_key_aqui}
+      # Multi-account configuration format: "id1,/app/profiles/account1,email1;id2,/app/profiles/account2,email2"
+      - DEEPSEEK_ACCOUNTS=${DEEPSEEK_ACCOUNTS:-default,/app/deepseek_profile}
+      - PLAYWRIGHT_HEADLESS=${PLAYWRIGHT_HEADLESS:-true}
+      - DEEPSPROXY_CHAT_INPUT_TIMEOUT_MS=${DEEPSPROXY_CHAT_INPUT_TIMEOUT_MS:-8000}
+      - DEEPSPROXY_HEALTH_CHECK_INTERVAL_MS=${DEEPSPROXY_HEALTH_CHECK_INTERVAL_MS:-60000}
+      - DEEPSPROXY_POW_CACHE_TTL_MS=${DEEPSPROXY_POW_CACHE_TTL_MS:-30000}
     volumes:
-      - ./deepseek_profile:/app/deepseek_profile
+      # Mount all account profiles
+      - ./deepseek_profiles:/app/deepseek_profiles
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
