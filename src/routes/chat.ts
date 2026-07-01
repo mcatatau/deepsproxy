@@ -246,6 +246,9 @@ async function parseDeepSeekStreamToOpenAI(
   const reader = deepSeekStream.getReader();
   const decoder = new TextDecoder();
 
+  // Buffer overflow protection: max 10MB buffer
+  const MAX_BUFFER_SIZE = 10 * 1024 * 1024;
+
   let currentAppendPath = '';
   let currentFragmentType = '';
   let reasoningContent = '';
@@ -321,7 +324,15 @@ async function parseDeepSeekStreamToOpenAI(
     const { done, value } = await reader.read();
     if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
+    const decoded = decoder.decode(value, { stream: true });
+    
+    // Buffer overflow protection: truncate if exceeds max size
+    if (buffer.length + decoded.length > MAX_BUFFER_SIZE) {
+      console.warn('[chat] Buffer overflow detected, truncating old data');
+      buffer = buffer.slice(-MAX_BUFFER_SIZE / 2);
+    }
+    
+    buffer += decoded;
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
 
@@ -495,6 +506,7 @@ async function peekStream(stream: ReadableStream): Promise<{ isEmpty: boolean; p
   try {
     const { done, value } = await reader.read();
     if (done) {
+      reader.releaseLock();
       return { isEmpty: true, peekedStream: new ReadableStream({ start(c) { c.close(); } }) };
     }
     
@@ -512,6 +524,8 @@ async function peekStream(stream: ReadableStream): Promise<{ isEmpty: boolean; p
           }
         } catch (err) {
           controller.error(err);
+        } finally {
+          reader.releaseLock();
         }
       },
       cancel() {

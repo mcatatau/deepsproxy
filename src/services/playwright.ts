@@ -11,9 +11,21 @@
 import { chromium, BrowserContext, Page } from 'playwright';
 import path from 'path';
 
+// Playwright instance management - singleton with lazy initialization
 let context: BrowserContext | null = null;
 export let activePage: Page | null = null;
 let currentHeaders: Record<string, string> = {};
+
+// PoW header cache to reduce browser calls
+interface CachedHeaders {
+  headers: Record<string, string>;
+  chatSessionId: string;
+  parentMessageId: number | null;
+  timestamp: number;
+}
+
+const HEADER_CACHE_TTL_MS = Number(process.env.DEEPSPROXY_POW_CACHE_TTL_MS || '30000'); // 30s default
+let cachedHeaders: CachedHeaders | null = null;
 
 export async function initPlaywright(headless = true) {
   if (process.env.TEST_MOCK_PLAYWRIGHT) return;
@@ -46,6 +58,7 @@ export async function closePlaywright() {
     await context.close();
     context = null;
     activePage = null;
+    cachedHeaders = null;
   }
 }
 

@@ -9,6 +9,12 @@ import { Message } from './types.ts';
 /**
  * Compresses the messages list to ensure the resulting serialized prompt length 
  * is strictly under targetLimit characters.
+ * 
+ * Priority for removal (lowest to highest):
+ * 1. System messages (never removed)
+ * 2. Tool/function responses
+ * 3. Assistant messages
+ * 4. User messages
  */
 export function compressMessages(
   messages: Message[],
@@ -29,12 +35,35 @@ export function compressMessages(
   let compressed = messages.map(msg => ({ ...msg }));
 
   // Strategy 1: Progressively remove older conversational history (excluding system prompt and the latest message)
+  // Priority: user > assistant > tool (system is never removed)
   while (compressed.length > 2) {
     let indexToRemove = -1;
+    
+    // First pass: try to remove old user messages
     for (let i = 0; i < compressed.length - 1; i++) {
-      if (compressed[i].role !== 'system') {
+      if (compressed[i].role !== 'system' && compressed[i].role === 'user') {
         indexToRemove = i;
         break;
+      }
+    }
+    
+    // Second pass: if no user messages found, try assistant messages
+    if (indexToRemove === -1) {
+      for (let i = 0; i < compressed.length - 1; i++) {
+        if (compressed[i].role !== 'system' && compressed[i].role === 'assistant') {
+          indexToRemove = i;
+          break;
+        }
+      }
+    }
+    
+    // Third pass: if still nothing, try tool/function messages (but preserve tool results needed for context)
+    if (indexToRemove === -1) {
+      for (let i = 0; i < compressed.length - 1; i++) {
+        if (compressed[i].role !== 'system' && (compressed[i].role === 'tool' || compressed[i].role === 'function')) {
+          indexToRemove = i;
+          break;
+        }
       }
     }
 

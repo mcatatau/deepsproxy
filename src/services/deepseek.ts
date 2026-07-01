@@ -10,15 +10,64 @@
 
 import { getDeepSeekHeaders } from './playwright.ts';
 
-// In-memory state to track the last message ID per session to avoid overwriting
-// Use globalThis to ensure it survives module reloads in some test environments
-const sessionStates: Record<string, number | null> = (globalThis as any)._sessionStates || {};
-(globalThis as any)._sessionStates = sessionStates;
+// Thread-safe session state tracking with per-session locks
+class SessionStateStore {
+  private states: Map<string, number | null> = new Map();
+  private locks: Map<string, Promise<void>> = new Map();
 
-export function updateSessionParent(sessionId: string, parentId: number | null) {
-  if (sessionId) {
-    sessionStates[sessionId] = parentId;
+  constructor() {
+    // Initialize from globalThis if available (for hot-reload survival)
+    const existing = (globalThis as any)._sessionStates;
+    if (existing && existing instanceof Map) {
+      this.states = existing;
+    } else {
+      (globalThis as any)._sessionStates = this.states;
+    }
   }
+
+  private async withLock<T>(sessionId: string, fn: () => T): Promise<T> {
+    let lock = this.locks.get(sessionId);
+    
+    if (!lock) {
+      lock = Promise.resolve();
+    }
+
+    let resolveLock: () => void;
+    const newLock = new Promise<void>((resolve) => {
+      resolveLock = resolve;
+    });
+
+    this.locks.set(sessionId, newLock);
+    await lock;
+
+    try {
+      return fn();
+    } finally {
+      resolveLock!();
+    }
+  }
+
+  async update(sessionId: string, parentId: number | null): Promise<void> {
+    if (!sessionId) return;
+    
+    await this.withLock(sessionId, () => {
+      this.states.set(sessionId, parentId);
+    });
+  }
+
+  get(sessionId: string): number | null | undefined {
+    return this.states.get(sessionId);
+  }
+
+  has(sessionId: string): boolean {
+    return this.states.has(sessionId);
+  }
+}
+
+export const sessionStateStore = new SessionStateStore();
+
+export function updateSessionParent(sessionId: string, parentId: number | null): Promise<void> {
+  return sessionStateStore.update(sessionId, parentId);
 }
 
 export interface DeepSeekPayload {
@@ -50,8 +99,11 @@ export async function createDeepSeekStream(
   
   if (forcedParentId !== undefined) {
     actualParentId = forcedParentId;
-  } else if (chatSessionId && sessionStates[chatSessionId] !== undefined) {
-    actualParentId = sessionStates[chatSessionId];
+  } else if (chatSessionId && sessionStateStore.has(chatSessionId)) {
+    const storedParentId = sessionStateStore.get(chatSessionId);
+    if (storedParentId !== undefined) {
+      actualParentId = storedParentId;
+    }
   }
 
   const payload: DeepSeekPayload = {
