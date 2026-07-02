@@ -187,13 +187,20 @@ class BrowserPool {
     this.accounts.clear();
   }
 
-  getAccountStats(): { total: number; healthy: number; unhealthy: number; suspended: number } {
-    const stats = { total: 0, healthy: 0, unhealthy: 0, suspended: 0 };
+  getAccountStats(): { total: number; healthy: number; unhealthy: number; suspended: number; accounts: Record<string, { healthy: boolean; profilePath: string; lastUsed?: number }> } {
+    const stats: any = { total: 0, healthy: 0, unhealthy: 0, suspended: 0, accounts: {} };
     for (const acc of this.accounts.values()) {
       stats.total++;
-      if (acc.status === 'healthy') stats.healthy++;
-      else if (acc.status === 'suspended') stats.suspended++;
-      else stats.unhealthy++;
+      if (acc.status === 'healthy') {
+        stats.healthy++;
+        stats.accounts[acc.id] = { healthy: true, profilePath: acc.profilePath, lastUsed: acc.lastHealthCheck };
+      } else if (acc.status === 'suspended') {
+        stats.suspended++;
+        stats.accounts[acc.id] = { healthy: false, profilePath: acc.profilePath, lastUsed: acc.lastHealthCheck };
+      } else {
+        stats.unhealthy++;
+        stats.accounts[acc.id] = { healthy: false, profilePath: acc.profilePath, lastUsed: acc.lastHealthCheck };
+      }
     }
     return stats;
   }

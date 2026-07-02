@@ -63,6 +63,84 @@ app.get('/health', (c) => {
   });
 });
 
+// Admin panel HTML
+app.get('/admin', (c) => {
+  const stats = browserPool.getAccountStats();
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepsProxy Admin</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+    .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h1 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+    .stat-card { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 4px; border-left: 4px solid #007bff; }
+    .stat-value { font-size: 24px; font-weight: bold; color: #007bff; }
+    .stat-label { color: #666; font-size: 14px; }
+    .account-item { background: #fff; border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 4px; }
+    .status-healthy { color: #28a745; }
+    .status-unhealthy { color: #dc3545; }
+    .vnc-link { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; }
+    .vnc-link:hover { background: #0056b3; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 DeepsProxy Admin Panel</h1>
+    
+    <div class="stat-card">
+      <div class="stat-value">${stats.total}</div>
+      <div class="stat-label">Total Accounts</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-value">${stats.healthy}</div>
+      <div class="stat-label">Healthy Accounts</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-value">${stats.unhealthy}</div>
+      <div class="stat-label">Unhealthy Accounts</div>
+    </div>
+
+    <h2>Account Details</h2>
+    ${Object.entries(stats.accounts).map(([id, info]: [string, any]) => `
+      <div class="account-item">
+        <strong>${id}</strong><br>
+        Status: <span class="${info.healthy ? 'status-healthy' : 'status-unhealthy'}">${info.healthy ? '✓ Healthy' : '✗ Unhealthy'}</span><br>
+        Profile: ${info.profilePath || 'N/A'}<br>
+        Last Used: ${info.lastUsed ? new Date(info.lastUsed).toLocaleString() : 'Never'}
+      </div>
+    `).join('')}
+
+    <a href="/vnc.html" class="vnc-link">🖥️ Open VNC Console</a>
+  </div>
+</body>
+</html>
+  `;
+  return c.html(html);
+});
+
+// VNC static files proxy (served by nginx in container)
+app.get('/vnc.html', (c) => {
+  return c.html(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>VNC Console</title>
+  <meta http-equiv="refresh" content="0;url=http://localhost:6080/vnc.html">
+</head>
+<body>
+  <p>Redirecting to VNC console...</p>
+  <p>If not redirected, <a href="http://localhost:6080/vnc.html">click here</a></p>
+</body>
+</html>
+  `);
+});
+
 // OpenAI compatible routes
 app.post('/v1/chat/completions', chatCompletions);
 
