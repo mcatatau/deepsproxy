@@ -6,6 +6,8 @@ COPY . .
 RUN npm run build
 
 FROM node:20-slim
+
+# Install VNC, noVNC, and dependencies
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -44,6 +46,13 @@ RUN apt-get update && apt-get install -y \
     libxshmfence1 \
     libxtst6 \
     xdg-utils \
+    xvfb \
+    x11vnc \
+    novnc \
+    websockify \
+    python3-numpy \
+    dbus-x11 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Google Chrome Stable
@@ -51,12 +60,15 @@ RUN wget -q -O /tmp/google-chrome-stable.deb https://dl.google.com/linux/chrome/
     && dpkg -i /tmp/google-chrome-stable.deb || apt-get install -yf \
     && rm /tmp/google-chrome-stable.deb \
     && rm -rf /var/lib/apt/lists/*
+
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/start-deepsproxy.sh ./start-deepsproxy.sh
+RUN chmod +x ./start-deepsproxy.sh
 RUN npx playwright install chromium
-EXPOSE 3000
-CMD ["node", "dist/index.js"]
+EXPOSE 3000 5900 6080
+CMD ["./start-deepsproxy.sh"]
