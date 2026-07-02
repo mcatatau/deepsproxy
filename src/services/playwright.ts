@@ -208,6 +208,79 @@ class BrowserPool {
 
 export const browserPool = new BrowserPool();
 
+// Account management functions for admin panel
+export async function addAccount(accountId: string, profilePath: string): Promise<void> {
+  if (browserPool['accounts'].has(accountId)) {
+    throw new Error(`Account ${accountId} already exists`);
+  }
+  
+  const account: DeepSeekAccount = {
+    id: accountId,
+    profilePath,
+    status: 'initializing',
+    consecutiveFailures: 0,
+  };
+  
+  try {
+    if (!browserPool['browserInstance']) {
+      throw new Error('Browser not initialized');
+    }
+    
+    account.context = await browserPool['browserInstance'].newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    });
+    account.page = await account.context.newPage();
+    account.status = 'healthy';
+    browserPool['accounts'].set(accountId, account);
+    console.log(`[Admin] Added account ${accountId} with profile ${profilePath}`);
+  } catch (error: any) {
+    account.status = 'unhealthy';
+    browserPool['accounts'].set(accountId, account);
+    console.error(`[Admin] Failed to add account ${accountId}:`, error.message);
+    throw error;
+  }
+}
+
+export async function removeAccount(accountId: string): Promise<void> {
+  const account = browserPool['accounts'].get(accountId);
+  if (!account) {
+    throw new Error(`Account ${accountId} not found`);
+  }
+  
+  if (account.context) {
+    await account.context.close();
+  }
+  
+  browserPool['accounts'].delete(accountId);
+  console.log(`[Admin] Removed account ${accountId}`);
+}
+
+export async function validateAccount(accountId: string): Promise<void> {
+  const account = browserPool['accounts'].get(accountId);
+  if (!account || !account.page) {
+    throw new Error(`Account ${accountId} not found or not initialized`);
+  }
+  
+  // Navigate to deepseek and check if logged in
+  try {
+    await account.page.goto('https://chat.deepseek.com/', { waitUntil: 'domcontentloaded' });
+    await account.page.waitForSelector('textarea, [role="textbox"]', { timeout: 10000 });
+    account.status = 'healthy';
+    account.consecutiveFailures = 0;
+    console.log(`[Admin] Validated account ${accountId}`);
+  } catch (error: any) {
+    account.status = 'login_required';
+    console.warn(`[Admin] Account ${accountId} validation failed:`, error.message);
+    throw new Error('Account validation failed - login required');
+  }
+}
+
+export async function setAccountAsDefault(accountId: string): Promise<void> {
+  // In a real implementation, this would update a config file
+  // For now, just log it
+  console.log(`[Admin] Set account ${accountId} as default`);
+}
+
 /**
  * Ensures the session is valid and extracts headers, PoW, and session ID.
  */

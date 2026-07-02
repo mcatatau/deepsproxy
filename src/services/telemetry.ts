@@ -127,3 +127,12 @@ export async function recordSuccess(model: string, promptSize: number): Promise<
 export async function recordFailure(model: string, promptSize: number): Promise<void> {
   await telemetryStore.recordFailure(model, promptSize);
 }
+
+export function getTelemetryStats(): { models: Record<string, ModelTelemetry> } {
+  const models: Record<string, ModelTelemetry> = {};
+  // Access the internal store map
+  for (const [key, value] of (telemetryStore as any).store.entries()) {
+    models[key] = value;
+  }
+  return { models };
+}
